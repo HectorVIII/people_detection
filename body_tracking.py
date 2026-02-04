@@ -9,10 +9,11 @@
 #   Assistant_1, Assistant_2, ...
 #   Nurse_1, Nurse_2, ...
 #
+# The input can be a live camera, an SVO file, or a stream from an IP address.
+#
 ########################################################################
 
 import cv2
-import sys
 import pyzed.sl as sl
 import cv_viewer.tracking_viewer as cv_viewer
 import numpy as np
@@ -67,15 +68,15 @@ def parse_args(init, opt):
     elif len(opt.resolution) > 0:
         print("[Sample] No valid resolution entered. Using default")
     else:
-        print("[Sample] Using default resolution")
+        print("Using default resolution")
 
 
-def create_binding_help_image(width=700, height=580):
+def create_binding_help_image(width=700, height=600):
     """
     Create a black image with white English instructions
     explaining how to bind people to roles.
     """
-    help_img = np.zeros((height, width, 3), dtype=np.uint8)
+    help_img = np.zeros((height, width, 3), dtype=np.uint8) # Black background
 
     lines = [
         "Body Role Binding Tutorial",
@@ -89,48 +90,43 @@ def create_binding_help_image(width=700, height=580):
         "   then LEFT-CLICK on each person to bind:",
         "     -> Assistant_1, Nurse_1, etc.",
         "",
-        "4) The label will be shown above the skeleton.",
+        "4) You can press ESC to cancel the current role selection.",
         "",
-        "5) You can keep this window open while binding,",
-        "   or close it at any time.",
+        "5) The label will be shown above the skeleton.",
         "",
-        "6) Press 'q' in the main window to quit the app.",
+        "6) You can re-bind a person by selecting a role",
+        "   and clicking on them again.",
+        "",
+        "7) Press 'q' in the main window to quit the app.",
         "",
         "IMPORTANT:",
         "  If a person leaves the camera view completely",
         "  and then comes back, their tracking ID may change,",
         "  so you may need to bind that person again."
-    ]
+    ]   # Instruction lines
 
-    y0 = 30
-    dy = 24
+    y0 = 30 # Initial y position
+    dy = 24 # Line spacing
 
     for i, line in enumerate(lines):
-        y = y0 + i * dy
-        cv2.putText(
-            help_img,
-            line,
-            (20, y),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (255, 255, 255),
-            1,
-            cv2.LINE_AA,
-        )
+        y = y0 + i * dy # Calculate y position for this line
+        cv2.putText(    
+            help_img,   
+            line,   
+            (20, y),    
+            cv2.FONT_HERSHEY_SIMPLEX,   
+            0.6,    
+            (255, 255, 255),    
+            1,  
+            cv2.LINE_AA,    
+        )   # Draw the text line on the image
 
-    return help_img
+    return help_img 
 
 
-def main(opt):
-    print("Running Multi-Person Body Tracking with Manual Role Binding")
-    print("============================================================")
-    print("Quick usage:")
-    print("  - Click the 'Binding Help' button in the top-left corner")
-    print("    of the main window to open the tutorial dialog.")
-    print("  - Press 's' / 'a' / 'n' to select Surgeon / Assistant / Nurse.")
-    print("  - Then LEFT-CLICK on a person to bind them (Surgeon_1, etc.).")
+def main(opt):  
     print("  - Press 'q' in the main window to quit.")
-    print("============================================================\n")
+    print("  - Press 'm' to pause/resume.")
 
     # Create a Camera object
     zed = sl.Camera()
@@ -139,8 +135,8 @@ def main(opt):
     init_params = sl.InitParameters()
     init_params.camera_resolution = sl.RESOLUTION.HD1080  # Use HD1080 video mode
     init_params.coordinate_units = sl.UNIT.METER          # Set coordinate units
-    init_params.depth_mode = sl.DEPTH_MODE.NEURAL
-    init_params.coordinate_system = sl.COORDINATE_SYSTEM.RIGHT_HANDED_Y_UP
+    init_params.depth_mode = sl.DEPTH_MODE.NEURAL        # Use NEURAL depth mode
+    init_params.coordinate_system = sl.COORDINATE_SYSTEM.RIGHT_HANDED_Y_UP  # Use Y-up coordinate system
 
     # Parse CLI arguments into init_params
     parse_args(init_params, opt)
@@ -154,39 +150,51 @@ def main(opt):
     # Enable Positional tracking (mandatory for body tracking)
     positional_tracking_parameters = sl.PositionalTrackingParameters()
     # If the camera is static, you can improve performance with:
-    # positional_tracking_parameters.set_as_static = True
+    positional_tracking_parameters.set_as_static = True
+
     zed.enable_positional_tracking(positional_tracking_parameters)
 
     # Configure body tracking parameters
     body_param = sl.BodyTrackingParameters()
     body_param.enable_tracking = True                 # Track people across frames
-    body_param.enable_body_fitting = False            # Smooth skeleton movement
-    body_param.detection_model = sl.BODY_TRACKING_MODEL.HUMAN_BODY_FAST
-    body_param.body_format = sl.BODY_FORMAT.BODY_38   # Skeleton format (18 keypoints)
+    body_param.enable_body_fitting = True            # enables the fitting process of each detected person
+    body_param.detection_model = sl.BODY_TRACKING_MODEL.HUMAN_BODY_ACCURATE  # state-of-the-art accuracy, requires powerful GPU
+    """
+    BODY_TRACKING_MODEL::HUMAN_BODY_FAST: real time performance even on NVIDIA® Jetson™ or low-end GPU cards
+
+    BODY_TRACKING_MODEL::HUMAN_BODY_MEDIUM: this is a compromise between accuracy and speed
+
+    BODY_TRACKING_MODEL::HUMAN_BODY_ACCURATE: state-of-the-art accuracy, requires powerful GPU
+    """
+    body_param.body_format = sl.BODY_FORMAT.BODY_38   # Skeleton format (38 keypoints)
 
     # Enable body tracking module
     zed.enable_body_tracking(body_param)
 
     # Runtime body tracking parameters
     body_runtime_param = sl.BodyTrackingRuntimeParameters()
-    body_runtime_param.detection_confidence_threshold = 40
+    body_runtime_param.detection_confidence_threshold = 70  # Minimum confidence to detect a body
 
     # Get ZED camera information
     camera_info = zed.get_camera_information()
 
     # 2D viewer utilities: downscale image for display (for performance)
+    """
     display_resolution = sl.Resolution(
         min(camera_info.camera_configuration.resolution.width, 1280),
         min(camera_info.camera_configuration.resolution.height, 720)
-    )
+    )   # Display resolution (max 1280x720)
+    """
+    display_resolution = camera_info.camera_configuration.resolution    # Use full resolution for display
     image_scale = [
         display_resolution.width / camera_info.camera_configuration.resolution.width,
         display_resolution.height / camera_info.camera_configuration.resolution.height,
-    ]
+    ]   # Scaling factors for width and height
+       
 
     # ZED objects
-    bodies = sl.Bodies()
-    image = sl.Mat()
+    bodies = sl.Bodies()    # To store detected bodies
+    image = sl.Mat()    # To store the left image
     key_wait = 10  # delay for cv2.waitKey in milliseconds
 
     # ------------------------------------------------------------------
@@ -197,10 +205,16 @@ def main(opt):
     #   click_pos: (x, y) in display image coordinates
     #   surgeon_count / assistant_count / nurse_count: counters for numbering
     # ------------------------------------------------------------------
-    role_map = {}
+    role_map = {}   # body ID (int) -> role string
     current_role = None
-    click_pending = False
-    click_pos = (0, 0)
+    click_pending = False 
+    click_pos = (0, 0)  # (x, y) of the last click
+
+    role_color = {
+        "Surgeon":  (0, 0, 255),   # RED
+        "Assistant": (255, 0, 0),  # BLUE
+        "Nurse":  (0, 255, 0)      # GREEN
+    }
 
     surgeon_count = 0
     assistant_count = 0
@@ -214,16 +228,17 @@ def main(opt):
     button_w = 170
     button_h = 40
 
-    binding_help_requested = False
+    binding_help_requested = False  # Flag to show help window
 
     window_name = "ZED | 2D View"
     help_window_name = "Binding Help"
 
-    cv2.namedWindow(window_name)
+    cv2.namedWindow(window_name)    # Create main OpenCV window
 
     # Mouse callback for selecting a body by clicking near it OR clicking the help button
     def mouse_callback(event, x, y, flags, param):
-        nonlocal click_pending, click_pos, binding_help_requested
+        # Handle left button click events
+        nonlocal click_pending, click_pos, binding_help_requested   # Use nonlocal to modify outer variables
         if event == cv2.EVENT_LBUTTONDOWN:
             # Check if the click is inside the Binding Help button
             if button_x <= x <= button_x + button_w and button_y <= y <= button_y + button_h:
@@ -235,7 +250,7 @@ def main(opt):
                 click_pending = True
                 print(f"[Mouse] Click at ({x}, {y})")
 
-    cv2.setMouseCallback(window_name, mouse_callback)
+    cv2.setMouseCallback(window_name, mouse_callback)   # Set mouse callback for main window
 
     # Pre-create the help image so we can show it any time
     binding_help_img = create_binding_help_image()
@@ -331,13 +346,23 @@ def main(opt):
                         # Use assigned role if available, otherwise show raw ID
                         role_text = role_map.get(body_id, f"ID:{body_id}")
 
+                        # Determine color based on role
+                        if "Surgeon" in role_text:
+                            color = role_color["Surgeon"]
+                        elif "Assistant" in role_text:
+                            color = role_color["Assistant"]
+                        elif "Nurse" in role_text:
+                            color = role_color["Nurse"]
+                        else:
+                            color = (0, 255, 255)   # yellow for raw ID (no role)
+
                         cv2.putText(
                             image_left_ocv,
                             role_text,
-                            (x, y - 10),  # slightly above the joint
+                            (x, y - 10),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.7,
-                            (0, 255, 255),
+                            color,
                             2,
                             cv2.LINE_AA
                         )
@@ -436,6 +461,9 @@ def main(opt):
             elif key == ord('n'):
                 current_role = "Nurse"
                 print("[Role] Current role set to 'Nurse'. Click on a person to bind.")
+            elif key == 27:  # ESC key to cancel current role selection
+                current_role = None
+                print("[Role] Binding cancelled.")
 
     # Clean up
     image.free(sl.MEM.CPU)
@@ -446,7 +474,7 @@ def main(opt):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser()  #Create a command-line argument parser to define and handle user input parameters
     parser.add_argument(
         '--input_svo_file',
         type=str,
@@ -465,7 +493,7 @@ if __name__ == '__main__':
         help='Resolution, can be either HD2K, HD1200, HD1080, HD720, SVGA or VGA',
         default=''
     )
-    opt = parser.parse_args()
+    opt = parser.parse_args()   #Parse the command-line arguments into the opt object
 
     # Safety check: do not specify both SVO and IP at the same time
     if len(opt.input_svo_file) > 0 and len(opt.ip_address) > 0:
