@@ -54,9 +54,9 @@ def main():
     # 4) Set up role binding + help image + viewer
     # ----------------------------------------------------------
     binding_manager = RoleBindingManager(tuple(zed_tracker.image_scale))
-    help_img = create_binding_help_image()
+    help_img = create_binding_help_image()  # Create help image
 
-    window_name = "ZED | 2D View"
+    window_name = "People Detection and Role Binding"
     viewer = BodyViewer2D(
         window_name=window_name,
         display_resolution=zed_tracker.display_resolution,

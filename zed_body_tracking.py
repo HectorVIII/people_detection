@@ -34,7 +34,7 @@ class ZEDBodyTracker:
 
         # Runtime parameters
         self.body_runtime_param = sl.BodyTrackingRuntimeParameters()
-        self.body_runtime_param.detection_confidence_threshold = 70
+        self.body_runtime_param.detection_confidence_threshold = 60
 
         # Camera info and display scaling
         camera_info = self.zed.get_camera_information()
