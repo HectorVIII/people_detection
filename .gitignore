@@ -4,3 +4,7 @@ __pycache__/
 *.log
 .DS_Store
 *.svo
+__pycache__/
+*.pyc
+.codex
+*.wav

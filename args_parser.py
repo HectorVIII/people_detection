@@ -29,6 +29,11 @@ def configure_init_params(init: sl.InitParameters, opt: argparse.Namespace) -> N
         else:
             print("[Sample] Invalid IP format. Using live camera")
 
+    # Wired camera input
+    elif opt.camera_serial_number > 0:
+        init.set_from_serial_number(opt.camera_serial_number)
+        print("[Sample] Using Camera serial number:", opt.camera_serial_number)
+
     # Resolution selection
     if "HD2K" in opt.resolution:
         init.camera_resolution = sl.RESOLUTION.HD2K
@@ -74,5 +79,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help='Resolution, can be either HD2K, HD1200, HD1080, HD720, SVGA or VGA',
         default=''
     )
+    parser.add_argument(
+        '--camera_serial_number',
+        type=int,
+        help='ZED camera serial number for wired camera input',
+        default=32483963
+    )
     return parser
-
